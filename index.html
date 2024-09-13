@@ -61,6 +61,7 @@
             flex-grow: 1;
             padding: 20px;
             background: #fff;
+            border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             display: flex;
             flex-direction: column;
@@ -69,11 +70,8 @@
             text-align: center;
             color: #ffffff;
         }
-        input[type="text"], textarea {
-            width: 100%;
-            box-sizing: border-box; /* Ensure padding and border are included in width */
-        }
         input[type="text"] {
+            width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -82,6 +80,7 @@
             font-family: Arial, sans-serif;
         }
         textarea {
+            width: 100%;
             height: 200px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -281,25 +280,17 @@
             noteElement.className = 'note-item';
             noteElement.innerHTML = `
                 <strong>${note.title}</strong>
-                <div class="note-preview">${note.content.slice(0, 50)}...</div>
+                <div class="note-preview">${note.content}</div>
+                <div class="note-actions">
+                    ${isTrash ? `
+                        <button onclick="restoreNote('${note.title}')">Restore</button>
+                        <button onclick="openPopup('${note.title}')">Delete</button>
+                    ` : `
+                        <button onclick="moveNoteToTrash('${note.title}')">Trash</button>
+                    `}
+                </div>
             `;
-
-            noteElement.addEventListener('click', () => {
-                if (isTrash) {
-                    restoreFromTrash(note.title);
-                } else {
-                    showNoteDetails(note.title);
-                }
-            });
-
-            noteElement.addEventListener('contextmenu', (event) => {
-                event.preventDefault();
-                currentNoteTitle = note.title;
-                contextMenu.style.display = 'block';
-                contextMenu.style.left = `${event.pageX}px`;
-                contextMenu.style.top = `${event.pageY}px`;
-            });
-
+            noteElement.onclick = () => showNoteContent(note.title); // Set up click event for note
             container.appendChild(noteElement);
         }
 
@@ -309,11 +300,10 @@
             notes.forEach(note => addNoteToSidebar(note, container, isTrash));
         }
 
-        // Display note details
-        function showNoteDetails(title) {
+        // Show note content for editing
+        function showNoteContent(title) {
             const savedNotes = JSON.parse(localStorage.getItem('notes')) || [];
             const note = savedNotes.find(note => note.title === title);
-
             if (note) {
                 document.getElementById('noteTitle').value = note.title;
                 document.getElementById('noteContent').value = note.content;
@@ -321,87 +311,74 @@
             }
         }
 
-        // Restore a note from trash
-        function restoreFromTrash(title) {
-            const trashNotes = JSON.parse(localStorage.getItem('trash')) || [];
-            const note = trashNotes.find(note => note.title === title);
+        // Move note to trash
+        function moveNoteToTrash(title) {
+            const savedNotes = JSON.parse(localStorage.getItem('notes')) || [];
+            const noteIndex = savedNotes.findIndex(note => note.title === title);
 
-            if (note) {
+            if (noteIndex !== -1) {
+                const [note] = savedNotes.splice(noteIndex, 1);
+                localStorage.setItem('notes', JSON.stringify(savedNotes));
+
+                const trashNotes = JSON.parse(localStorage.getItem('trash')) || [];
+                trashNotes.push(note);
+                localStorage.setItem('trash', JSON.stringify(trashNotes));
+
+                updateSidebar(savedNotes, document.getElementById('noteList'), false);
+                updateSidebar(trashNotes, document.getElementById('trashList'), true);
+            }
+        }
+
+        // Restore note from trash
+        function restoreNote(title) {
+            const trashNotes = JSON.parse(localStorage.getItem('trash')) || [];
+            const noteIndex = trashNotes.findIndex(note => note.title === title);
+
+            if (noteIndex !== -1) {
+                const [note] = trashNotes.splice(noteIndex, 1);
+                localStorage.setItem('trash', JSON.stringify(trashNotes));
+
                 const savedNotes = JSON.parse(localStorage.getItem('notes')) || [];
                 savedNotes.push(note);
                 localStorage.setItem('notes', JSON.stringify(savedNotes));
 
-                // Remove from trash
-                const updatedTrashNotes = trashNotes.filter(note => note.title !== title);
-                localStorage.setItem('trash', JSON.stringify(updatedTrashNotes));
-                updateSidebar(updatedTrashNotes, document.getElementById('trashList'), true);
                 updateSidebar(savedNotes, document.getElementById('noteList'), false);
-            }
-        }
-
-        // Delete a note
-        function deleteNote() {
-            const savedNotes = JSON.parse(localStorage.getItem('notes')) || [];
-            const noteToDelete = savedNotes.find(note => note.title === currentNoteTitle);
-
-            if (noteToDelete) {
-                const trashNotes = JSON.parse(localStorage.getItem('trash')) || [];
-                trashNotes.push(noteToDelete);
-                localStorage.setItem('trash', JSON.stringify(trashNotes));
-
-                const updatedSavedNotes = savedNotes.filter(note => note.title !== currentNoteTitle);
-                localStorage.setItem('notes', JSON.stringify(updatedSavedNotes));
-                updateSidebar(updatedSavedNotes, document.getElementById('noteList'), false);
                 updateSidebar(trashNotes, document.getElementById('trashList'), true);
             }
-            closePopup();
         }
 
-        // Permanently delete a note
-        function confirmDelete() {
-            deleteNote();
-        }
-
-        // Show custom popup
-        function showPopup() {
+        // Open confirmation popup
+        function openPopup(title) {
+            deleteNoteTitle = title;
             document.getElementById('popupOverlay').style.display = 'flex';
         }
 
-        // Close custom popup
+        // Close confirmation popup
         function closePopup() {
             document.getElementById('popupOverlay').style.display = 'none';
         }
 
-        // Format text (bold, italicize, highlight)
-        function formatText(command) {
-            const textarea = document.getElementById('noteContent');
-            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-            let newText = '';
+        // Confirm delete action
+        function confirmDelete() {
+            const trashNotes = JSON.parse(localStorage.getItem('trash')) || [];
+            const noteIndex = trashNotes.findIndex(note => note.title === deleteNoteTitle);
 
-            switch (command) {
-                case 'bold':
-                    newText = `<b>${selectedText}</b>`;
-                    break;
-                case 'italic':
-                    newText = `<i>${selectedText}</i>`;
-                    break;
-                case 'highlight':
-                    newText = `<span class="highlight">${selectedText}</span>`;
-                    break;
+            if (noteIndex !== -1) {
+                trashNotes.splice(noteIndex, 1);
+                localStorage.setItem('trash', JSON.stringify(trashNotes));
+                updateSidebar(trashNotes, document.getElementById('trashList'), true);
             }
 
-            textarea.setRangeText(newText, textarea.selectionStart, textarea.selectionEnd, 'end');
+            closePopup();
         }
 
-        // Hide context menu when clicking outside
-        document.addEventListener('click', (event) => {
-            if (!event.target.matches('.note-item')) {
-                contextMenu.style.display = 'none';
-            }
-        });
+        // Format text (stub for functionality)
+        function formatText(command) {
+            document.execCommand(command, false, null);
+        }
 
-        // Initialize
-        loadNotes();
+        // Initialize notes on page load
+        document.addEventListener('DOMContentLoaded', loadNotes);
     </script>
 </body>
 </html>
