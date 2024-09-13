@@ -1,2 +1,2 @@
 # note-taking
-A simple note taking website made by me!
+A simple note taking website called NoteNest!
